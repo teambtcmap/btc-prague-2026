@@ -1,0 +1,15 @@
+# Build artifacts
+.build/
+
+# Virtual environment
+.venv/
+
+# IDE / agent config
+opencode.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Optional: keep output PDFs but ignore preview PNGs
+# .build/preview-*.png
