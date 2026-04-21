@@ -100,19 +100,22 @@ FONT_DIR = ASSETS / "fonts"
 FONT_REGULAR_TTF  = FONT_DIR / "Manrope-Regular.ttf"
 FONT_BOLD_TTF     = FONT_DIR / "Manrope-Bold.ttf"
 FONT_XBOLD_TTF    = FONT_DIR / "Manrope-ExtraBold.ttf"
+FONT_ICONS_TTF    = FONT_DIR / "MaterialIcons-Regular.ttf"
 
 
-def register_fonts() -> tuple[str, str, str]:
-    """Register Manrope in ReportLab and return (xbold, bold, regular) names."""
-    if not (FONT_REGULAR_TTF.exists() and FONT_BOLD_TTF.exists()
-            and FONT_XBOLD_TTF.exists()):
+def register_fonts() -> tuple[str, str, str, str]:
+    """Register Manrope + Material Icons in ReportLab and return
+    (xbold, bold, regular, icons) names."""
+    missing = [p for p in (FONT_REGULAR_TTF, FONT_BOLD_TTF,
+                           FONT_XBOLD_TTF, FONT_ICONS_TTF) if not p.exists()]
+    if missing:
         raise FileNotFoundError(
-            "Manrope fonts missing under assets/fonts/. Expected "
-            "Manrope-Regular.ttf, Manrope-Bold.ttf, Manrope-ExtraBold.ttf.")
+            f"Fonts missing: {missing}. Expected in assets/fonts/.")
     pdfmetrics.registerFont(TTFont("Manrope",          str(FONT_REGULAR_TTF)))
     pdfmetrics.registerFont(TTFont("Manrope-Bold",     str(FONT_BOLD_TTF)))
     pdfmetrics.registerFont(TTFont("Manrope-ExtraBold", str(FONT_XBOLD_TTF)))
-    return "Manrope-ExtraBold", "Manrope-Bold", "Manrope"
+    pdfmetrics.registerFont(TTFont("MaterialIcons",    str(FONT_ICONS_TTF)))
+    return "Manrope-ExtraBold", "Manrope-Bold", "Manrope", "MaterialIcons"
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +392,8 @@ def build_counter(font_bold: str, font_reg: str) -> Path:
 # Manrope typography, gradient sub-heading (45deg #0ecd71 -> #040273),
 # primary-coloured headline, body-coloured features, link-coloured URL pill.
 # ---------------------------------------------------------------------------
-def build_backwall(font_xbold: str, font_bold: str, font_reg: str) -> Path:
+def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
+                    font_icons: str) -> Path:
     trim_w, trim_h = 3000.0, 2500.0
     bleed = 10.0
     out_trim_w = trim_w * SCALE   # 300 mm
@@ -455,17 +459,25 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str) -> Path:
                 width=logo_w_out_mm, height=logo_h_out_mm,
                 mask="auto", preserveAspectRatio=True)
 
-    # "BTC Map" right of logo, vertically centred, link-blue colour
+    # "BTC Map" right of logo, vertically centred, with the same gradient
+    # as the sub-heading (45deg #0ECD71 -> #040273).
     headline = "BTC Map"
     headline_size = 32
-    c.setFont(font_xbold, headline_size)
-    c.setFillColor(C_LINK)
-    headline_x = logo_x + logo_w_out_mm + 6
-    # Baseline placed so the full text block (caps + descenders) is visually
-    # centred to the logo. The descender on 'p' pulls the visual weight down,
-    # so we shift the baseline lower to compensate.
-    headline_y = logo_y + logo_h_out_mm / 2 - headline_size * 0.38
-    c.drawString(headline_x, headline_y, headline)
+    head_font_px = 400
+    head_png = BUILD / f"headline-{hash(headline) & 0xffff}-{head_font_px}.png"
+    if not head_png.exists():
+        render_gradient_text_png(headline, FONT_XBOLD_TTF, head_font_px, head_png)
+    head_img = Image.open(head_png)
+    head_w_px, head_h_px = head_img.size
+    head_aspect = head_w_px / head_h_px
+    head_h_out = headline_size
+    head_w_out = head_h_out * head_aspect
+    head_x = logo_x + logo_w_out_mm + 6
+    # Centre the headline image vertically to the logo
+    head_y = logo_y + (logo_h_out_mm - head_h_out) / 2
+    c.drawImage(str(head_png), head_x, head_y,
+                width=head_w_out, height=head_h_out,
+                mask="auto", preserveAspectRatio=True)
 
     # ---- Gradient sub-heading (two lines, like the site) ----
     sub_lines = ["Find places to spend", "sats wherever you are"]
@@ -498,22 +510,47 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str) -> Path:
                     mask="auto", preserveAspectRatio=True)
         sub_y -= sub_gap_mm
 
-    # ---- Feature blurbs ----
+    # ---- Feature blurbs with Material Design round icons ----
+    # Transparent circles with coloured outline + matching coloured icon.
+    # All three glyphs have visual centre at 256/512 = 0.5000 of em height.
     features = [
-        ("Free & Open Source",
-         "Our apps and the underlying data are free and open-source."),
-        ("Community-driven",
-         "Powered by OpenStreetMap contributors worldwide."),
-        ("#SPEDN",
-         "Spending sats is direct action. Join the movement."),
+        (chr(0xEA70), "Free & Open Source",
+         "Our apps and the underlying data are free and open-source.",
+         BRAND_GREEN),   # volunteer_activism
+        (chr(0xF8D9), "Community-driven",
+         "Powered by OpenStreetMap contributors worldwide.",
+         C_LINK),        # diversity_3
+        (chr(0xEA0B), "#SPEDN",
+         "Spending sats is direct action. Join the movement.",
+         CMYKColor(0.72, 0.60, 0.15, 0.70)),  # bolt
     ]
-    feat_x = trim_x0 + margin
     feat_y = sub_y - gap_medium
     line_gap = 26
     title_size = 9
     body_size = 7
-    for i, (title, body) in enumerate(features):
+    icon_r = 8.0
+    icon_stroke_pt = 0.5
+    # Shift text further right so it doesn't crowd the icon circle
+    feat_x = trim_x0 + margin + 26
+    for i, (icon_char, title, body, icon_colour) in enumerate(features):
         y = feat_y - i * line_gap
+        icon_cx = trim_x0 + margin + icon_r
+        # Vertical centre of the whole blurb block (title + body)
+        title_top    = y + title_size * 0.7
+        body_bottom  = y - 10.0 - body_size * 0.1
+        block_centre = (title_top + body_bottom) / 2
+        icon_cy = block_centre
+        # Transparent circle with coloured outline
+        c.setStrokeColor(icon_colour)
+        c.setLineWidth(icon_stroke_pt)
+        c.circle(icon_cx, icon_cy, icon_r, stroke=1, fill=0)
+        # Coloured Material Icon glyph, centred in the circle
+        c.setFillColor(icon_colour)
+        icon_font_size = icon_r * 1.15
+        c.setFont(font_icons, icon_font_size)
+        icon_text_y = icon_cy - 0.50 * icon_font_size
+        c.drawCentredString(icon_cx, icon_text_y, icon_char)
+        # Text
         c.setFillColor(C_PRIMARY)
         c.setFont(font_bold, title_size)
         c.drawString(feat_x, y, title)
@@ -552,11 +589,11 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str) -> Path:
 # Main
 # ---------------------------------------------------------------------------
 def main() -> None:
-    font_xbold, font_bold, font_reg = register_fonts()
-    print(f"Fonts: {font_xbold} / {font_bold} / {font_reg}")
+    font_xbold, font_bold, font_reg, font_icons = register_fonts()
+    print(f"Fonts: {font_xbold} / {font_bold} / {font_reg} / {font_icons}")
     counter = build_counter(font_bold, font_reg)
     print(f"Wrote {counter} ({counter.stat().st_size/1024:.1f} KB)")
-    backwall = build_backwall(font_xbold, font_bold, font_reg)
+    backwall = build_backwall(font_xbold, font_bold, font_reg, font_icons)
     print(f"Wrote {backwall} ({backwall.stat().st_size/1024:.1f} KB)")
 
 
