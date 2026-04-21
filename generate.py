@@ -150,6 +150,27 @@ def make_qr_png(url: str, out_path: Path, target_px: int) -> Path:
     return out_path
 
 
+def measure_text_width(text: str, font_path: Path, font_px: int) -> int:
+    """Return text width in pixels at the given font size."""
+    font = ImageFont.truetype(str(font_path), font_px)
+    tmp = Image.new("RGBA", (10, 10))
+    d = ImageDraw.Draw(tmp)
+    l, t, r, b = d.textbbox((0, 0), text, font=font)
+    return r - l
+
+
+def compute_font_for_width(text: str, font_path: Path,
+                           target_px: int, ref_font_px: int = 200) -> int:
+    """Compute the font size (px) needed to render `text` at `target_px` width.
+
+    Measures at a reference font size and scales linearly.
+    """
+    ref_w = measure_text_width(text, font_path, ref_font_px)
+    if ref_w == 0:
+        return ref_font_px
+    return int(round((target_px / ref_w) * ref_font_px))
+
+
 def render_gradient_text_png(
     text: str,
     font_path: Path,
@@ -464,7 +485,11 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
     # as the sub-heading (45deg #0ECD71 -> #040273).
     headline = "BTC Map"
     headline_size = 32
-    head_font_px = 400
+    # Compute font size for 300 dpi at the printed (1:1) width.
+    # Physical width estimate: headline fills ~100 mm output = 1000 mm at 1:1.
+    head_phys_w_mm = 1000.0
+    head_target_px = int((head_phys_w_mm / 25.4) * TARGET_DPI_FULL)
+    head_font_px = compute_font_for_width(headline, FONT_BOLD_TTF, head_target_px)
     head_png = BUILD / f"headline-{hash(headline) & 0xffff}-{head_font_px}.png"
     if not head_png.exists():
         render_gradient_text_png(headline, FONT_BOLD_TTF, head_font_px, head_png)
@@ -480,36 +505,42 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
                 width=head_w_out, height=head_h_out,
                 mask="auto", preserveAspectRatio=True)
 
-    # ---- Gradient sub-heading (two lines, like the site) ----
-    sub_lines = ["Find places to spend", "sats wherever you are"]
-    sub_target_h_mm = 14.0   # per line cap height
-    sub_font_px = 220
-    sub_gap_mm = 2.0         # gap between lines
-
-    # Render each line as a separate gradient PNG and stack them
-    sub_line_imgs = []
-    for line in sub_lines:
-        line_png = BUILD / f"subhead-{hash(line) & 0xffff}-{sub_font_px}.png"
-        if not line_png.exists():
-            render_gradient_text_png(line, FONT_BOLD_TTF, sub_font_px, line_png)
-        sub_line_imgs.append((line, line_png))
-
     # Compute the combined width of logo + headline so sub-heading matches
     header_right = head_x + head_w_out
     sub_x = trim_x0 + margin
     sub_target_w_mm = header_right - sub_x
 
+    # ---- Gradient sub-heading (two lines, like the site) ----
+    sub_lines = ["Find places to spend", "sats wherever you are"]
+    # Render both lines at the same font size, computed from the shorter
+    # second line so the first line will be slightly narrower.
+    sub_phys_w_mm = sub_target_w_mm * 10
+    sub_target_px = int((sub_phys_w_mm / 25.4) * TARGET_DPI_FULL)
+    sub_gap_mm = 2.0
+    # Use the second (shorter) line to determine the common font size
+    common_font_px = compute_font_for_width(sub_lines[1], FONT_BOLD_TTF, sub_target_px)
+    sub_line_imgs = []
+    for line in sub_lines:
+        line_png = BUILD / f"subhead-{hash(line) & 0xffff}-{common_font_px}.png"
+        if not line_png.exists():
+            render_gradient_text_png(line, FONT_BOLD_TTF, common_font_px, line_png)
+        sub_line_imgs.append((line, line_png))
+
     # Place below the logo/headline row — tight gap (hero block feels connected)
     gap_tight = 14.0
     gap_medium = 24.0
     sub_y = logo_y - gap_tight  # start close below the logo block
+    # Size sub-heading so line 2 ends inline with the "BTC Map" title.
+    # Line 2 aspect ratio determines the cap height needed.
+    _, line2_png = sub_line_imgs[1]
+    line2_img = Image.open(line2_png)
+    line2_aspect = line2_img.size[0] / line2_img.size[1]
+    sub_h_out = (header_right - sub_x) / line2_aspect
     for _, line_png in sub_line_imgs:
         im = Image.open(line_png)
         sub_w_px, sub_h_px = im.size
         sub_aspect = sub_w_px / sub_h_px
-        # Force width to match the header block; height scales to preserve aspect
-        sub_w_out = sub_target_w_mm
-        sub_h_out = sub_w_out / sub_aspect
+        sub_w_out = sub_h_out * sub_aspect
         sub_y -= sub_h_out
         c.drawImage(str(line_png), sub_x, sub_y,
                     width=sub_w_out, height=sub_h_out,
