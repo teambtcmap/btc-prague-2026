@@ -14,6 +14,7 @@ import subprocess
 from pathlib import Path
 
 import cairosvg
+import math
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
 
@@ -466,7 +467,7 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
     head_font_px = 400
     head_png = BUILD / f"headline-{hash(headline) & 0xffff}-{head_font_px}.png"
     if not head_png.exists():
-        render_gradient_text_png(headline, FONT_XBOLD_TTF, head_font_px, head_png)
+        render_gradient_text_png(headline, FONT_BOLD_TTF, head_font_px, head_png)
     head_img = Image.open(head_png)
     head_w_px, head_h_px = head_img.size
     head_aspect = head_w_px / head_h_px
@@ -490,11 +491,15 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
     for line in sub_lines:
         line_png = BUILD / f"subhead-{hash(line) & 0xffff}-{sub_font_px}.png"
         if not line_png.exists():
-            render_gradient_text_png(line, FONT_XBOLD_TTF, sub_font_px, line_png)
+            render_gradient_text_png(line, FONT_BOLD_TTF, sub_font_px, line_png)
         sub_line_imgs.append((line, line_png))
 
-    # Place below the logo/headline row — tight gap (hero block feels connected)
+    # Compute the combined width of logo + headline so sub-heading matches
+    header_right = head_x + head_w_out
     sub_x = trim_x0 + margin
+    sub_target_w_mm = header_right - sub_x
+
+    # Place below the logo/headline row — tight gap (hero block feels connected)
     gap_tight = 14.0
     gap_medium = 24.0
     sub_y = logo_y - gap_tight  # start close below the logo block
@@ -502,8 +507,9 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
         im = Image.open(line_png)
         sub_w_px, sub_h_px = im.size
         sub_aspect = sub_w_px / sub_h_px
-        sub_h_out = sub_target_h_mm
-        sub_w_out = sub_h_out * sub_aspect
+        # Force width to match the header block; height scales to preserve aspect
+        sub_w_out = sub_target_w_mm
+        sub_h_out = sub_w_out / sub_aspect
         sub_y -= sub_h_out
         c.drawImage(str(line_png), sub_x, sub_y,
                     width=sub_w_out, height=sub_h_out,
@@ -524,6 +530,7 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
          "Spending sats is direct action. Join the movement.",
          CMYKColor(0.72, 0.60, 0.15, 0.70)),  # bolt
     ]
+    # Position features with standard medium gap below sub-heading
     feat_y = sub_y - gap_medium
     line_gap = 26
     title_size = 9
@@ -558,18 +565,90 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
         c.setFont(font_reg, body_size)
         c.drawString(feat_x, y - 10.0, body)
 
+    # ---- Confetti & starbursts (decorative) ----
+    # Render detailed SVG confetti shapes (6-point star, streamer, burst)
+    # at ~300 dpi, in full brand colours, placed only in clear zones.
+    confetti_colours_hex = [
+        "#0B9072", "#0099AF", "#144046", "#051173", "#53C5D5",
+    ]
+
+    def confetti_svg(shape: str, colour: str, size_px: int) -> str:
+        """Return an SVG string for a confetti piece (star6 or burst only)."""
+        s = size_px
+        hs = s / 2
+        if shape == "star6":
+            # 6-point star (two overlapping triangles)
+            pts = []
+            for i in range(12):
+                angle = math.radians(i * 30 - 90)
+                r = s * 0.45 if i % 2 == 0 else s * 0.22
+                pts.append(f"{hs + r*math.cos(angle)},{hs + r*math.sin(angle)}")
+            path_d = "M" + " L".join(pts) + "Z"
+        else:  # burst
+            # 8-point burst
+            pts = []
+            for i in range(16):
+                angle = math.radians(i * 22.5 - 90)
+                r = s * 0.48 if i % 2 == 0 else s * 0.18
+                pts.append(f"{hs + r*math.cos(angle)},{hs + r*math.sin(angle)}")
+            path_d = "M" + " L".join(pts) + "Z"
+        return (
+            f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {s} {s}">'
+            f'<path d="{path_d}" fill="{colour}"/></svg>'
+        )
+
+    def render_confetti_png(shape: str, colour: str, size_px: int,
+                            out_path: Path) -> Path:
+        if out_path.exists():
+            return out_path
+        svg_data = confetti_svg(shape, colour, size_px)
+        cairosvg.svg2png(bytestring=svg_data.encode(),
+                         write_to=str(out_path),
+                         output_width=size_px)
+        return out_path
+
+    confetti_items = [
+        # Stars and bursts only — 10–14 mm at output scale
+        # Top-right clear zone
+        (trim_x0 + out_trim_w - 28, trim_y0 + out_trim_h - 35, "star6", 11.0, 0),
+        (trim_x0 + out_trim_w - 55, trim_y0 + out_trim_h - 65, "burst", 13.0, 1),
+        (trim_x0 + out_trim_w - 18, trim_y0 + out_trim_h - 90, "burst", 10.0, 2),
+        # Right edge — extending from high (near top) down to lower area
+        (trim_x0 + out_trim_w - 25, trim_y0 + out_trim_h * 0.72, "burst", 12.0, 3),
+        (trim_x0 + out_trim_w - 50, trim_y0 + out_trim_h * 0.62, "star6", 10.0, 4),
+        (trim_x0 + out_trim_w - 22, trim_y0 + out_trim_h * 0.48, "burst", 11.0, 0),
+        (trim_x0 + out_trim_w - 48, trim_y0 + out_trim_h * 0.34, "star6", 9.0, 2),
+        (trim_x0 + out_trim_w - 28, trim_y0 + out_trim_h * 0.18, "burst", 10.0, 1),
+        # Bottom-right corner (well clear of pill at x≈127–175)
+        (trim_x0 + out_trim_w - 58, trim_y0 + 55, "star6", 11.0, 1),
+        # Bottom band — left of pill
+        (trim_x0 + 20, trim_y0 + 28, "burst", 12.0, 2),
+        (trim_x0 + 50, trim_y0 + 32, "star6", 10.0, 4),
+        (trim_x0 + 80, trim_y0 + 24, "burst", 9.0, 1),
+    ]
+
+    for x, y, shape, size_mm, col_idx in confetti_items:
+        colour = confetti_colours_hex[col_idx % len(confetti_colours_hex)]
+        size_px = max(80, int((size_mm / SCALE) / 25.4 * TARGET_DPI_FULL))
+        png_path = BUILD / f"confetti-{shape}-{col_idx}-{size_px}.png"
+        render_confetti_png(shape, colour, size_px, png_path)
+        c.drawImage(str(png_path), x - size_mm/2, y - size_mm/2,
+                    width=size_mm, height=size_mm,
+                    mask="auto", preserveAspectRatio=True)
+
     # ---- URL pill (centred, bottom of trim) ----
     # Rendered like the site's rounded pill buttons: white text on link-blue
     pill_url = "btcmap.org"
-    pill_font_size = 14
+    pill_font_size = 12
     c.setFont(font_bold, pill_font_size)
     text_w = pdfmetrics.stringWidth(pill_url, font_bold, pill_font_size)
-    pad_x = 10
-    pad_y = 5
+    pad_x = 8
+    pad_y = 4
     pill_w = text_w + 2 * pad_x
     pill_h = pill_font_size + 2 * pad_y
     pill_x = cx - pill_w / 2
-    # Position pill with medium gap above it
+    # Position pill with a large gap above it (more breathing room after features)
+    gap_large = 32.0
     pill_y = trim_y0 + margin
     c.setFillColor(C_LINK)
     c.roundRect(pill_x, pill_y, pill_w, pill_h, pill_h / 2, stroke=0, fill=1)
