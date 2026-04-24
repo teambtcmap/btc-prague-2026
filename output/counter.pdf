@@ -20,7 +20,7 @@ Gb"-:!<E0#!.^12X6U#uzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz
 endobj
 4 0 obj
 <<
-/BleedBox [ 34.01575 34.01575 402.5197 360 ] /Contents 8 0 R /CropBox [ 34.01575 34.01575 402.5197 360 ] /MediaBox [ 0 0 436.5354 394.0157 ] /Parent 7 0 R /Resources <<
+/BleedBox [ 34.01575 34.01575 402.5197 360 ] /Contents 8 0 R /CropBox [ 0 0 436.5354 394.0157 ] /MediaBox [ 0 0 436.5354 394.0157 ] /Parent 7 0 R /Resources <<
 /Font 1 0 R /ProcSet [ /PDF /Text /ImageB /ImageC /ImageI ] /XObject <<
 /FormXob.a31a5e954da06c1cf562695f7d2f9f37 3 0 R
 >>
@@ -37,7 +37,7 @@ endobj
 endobj
 6 0 obj
 <<
-/Author (BTC Map) /CreationDate (D:20260424162901+01'00') /Creator (anonymous) /Keywords () /ModDate (D:20260424162901+01'00') /Producer (ReportLab PDF Library - \(opensource\)) 
+/Author (BTC Map) /CreationDate (D:20260424164316+01'00') /Creator (anonymous) /Keywords () /ModDate (D:20260424164316+01'00') /Producer (ReportLab PDF Library - \(opensource\)) 
   /Subject (BTC Prague 2026 stand) /Title (BTC Map - Counter Graphic) /Trapped /False
 >>
 endobj
@@ -60,14 +60,14 @@ xref
 0000000092 00000 n 
 0000000199 00000 n 
 0001850202 00000 n 
-0001850606 00000 n 
-0001850674 00000 n 
-0001850960 00000 n 
-0001851019 00000 n 
+0001850597 00000 n 
+0001850665 00000 n 
+0001850951 00000 n 
+0001851010 00000 n 
 trailer
 <<
 /ID 
-[<3f1d7e543677a5435501958714fe7616><3f1d7e543677a5435501958714fe7616>]
+[<7ae56e787487dec0dbe6eb2b184054dd><7ae56e787487dec0dbe6eb2b184054dd>]
 % ReportLab generated PDF document -- digest (opensource)
 
 /Info 6 0 R
@@ -75,5 +75,5 @@ trailer
 /Size 9
 >>
 startxref
-1851351
+1851342
 %%EOF

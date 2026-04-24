@@ -324,6 +324,7 @@ def set_pdf_boxes(c: canvas.Canvas, trim_w_mm: float, trim_h_mm: float,
     page_w_pt = (trim_w_mm + 2 * bleed_mm) * mm
     page_h_pt = (trim_h_mm + 2 * bleed_mm) * mm
     bleed_pt = bleed_mm * mm
+    media_box = (0, 0, page_w_pt + 2 * offset_pt, page_h_pt + 2 * offset_pt)
     # ReportLab box setters take (llx, lly, urx, ury) in points
     trim_box = (offset_pt + bleed_pt, offset_pt + bleed_pt,
                 offset_pt + page_w_pt - bleed_pt, offset_pt + page_h_pt - bleed_pt)
@@ -331,8 +332,9 @@ def set_pdf_boxes(c: canvas.Canvas, trim_w_mm: float, trim_h_mm: float,
                  offset_pt + page_w_pt, offset_pt + page_h_pt)
     c.setTrimBox(trim_box)
     c.setBleedBox(bleed_box)
-    # CropBox must encompass bleed + crop marks so viewers don't clip them.
-    c.setCropBox(bleed_box)
+    # CropBox controls what most PDF viewers display. Keep it at the full page
+    # so crop marks remain visible, while TrimBox/BleedBox still describe print geometry.
+    c.setCropBox(media_box)
 
 
 # ---------------------------------------------------------------------------
