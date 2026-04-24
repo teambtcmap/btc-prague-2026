@@ -87,6 +87,7 @@ MAX_QR_PX = 6000               # QR (binary art - very compressible)
 CROP_LEN_MM = 5.0          # length of each crop mark line (at output scale)
 CROP_OFFSET_MM = 2.0       # gap between trim edge and start of crop mark
 CROP_WEIGHT_PT = 0.25      # 0.25 pt hairline
+CROP_MARGIN_MM = 12.0      # extra media-box margin so crop marks aren't clipped
 
 # QR rendering: high error correction so the logo could be overlaid later if wanted
 QR_URL = "https://btcmap.org"
@@ -295,35 +296,43 @@ def draw_crop_marks(c: canvas.Canvas, trim_w_mm: float, trim_h_mm: float,
 # Page geometry helper
 # ---------------------------------------------------------------------------
 def begin_page(c: canvas.Canvas, trim_w_mm: float, trim_h_mm: float,
-               bleed_mm: float, fill: CMYKColor = BLEED_FILL) -> tuple[float, float]:
+               bleed_mm: float, fill: CMYKColor = BLEED_FILL) -> tuple[float, float, float]:
     """Configure the canvas for a page where 1 user-unit == 1 mm at output
-    scale. Returns (page_w_mm, page_h_mm) including bleed.
+    scale. Returns (page_w_mm, page_h_mm, crop_margin_mm).
     """
     page_w_mm = trim_w_mm + 2 * bleed_mm
     page_h_mm = trim_h_mm + 2 * bleed_mm
-    c.setPageSize((page_w_mm * mm, page_h_mm * mm))
-    # Scale so subsequent drawing uses millimetres directly
+    crop_margin_mm = CROP_MARGIN_MM
+    total_w_mm = page_w_mm + 2 * crop_margin_mm
+    total_h_mm = page_h_mm + 2 * crop_margin_mm
+    c.setPageSize((total_w_mm * mm, total_h_mm * mm))
+    c.saveState()
+    c.translate(crop_margin_mm * mm, crop_margin_mm * mm)
     c.scale(mm, mm)
     # Fill bleed area
     c.setFillColor(fill)
     c.rect(0, 0, page_w_mm, page_h_mm, stroke=0, fill=1)
-    return page_w_mm, page_h_mm
+    return page_w_mm, page_h_mm, crop_margin_mm
 
 
 def set_pdf_boxes(c: canvas.Canvas, trim_w_mm: float, trim_h_mm: float,
-                  bleed_mm: float) -> None:
+                  bleed_mm: float, crop_margin_mm: float) -> None:
     """Annotate the page with TrimBox / BleedBox so the printer's RIP knows
     the trim location.
     """
+    offset_pt = crop_margin_mm * mm
     page_w_pt = (trim_w_mm + 2 * bleed_mm) * mm
     page_h_pt = (trim_h_mm + 2 * bleed_mm) * mm
     bleed_pt = bleed_mm * mm
     # ReportLab box setters take (llx, lly, urx, ury) in points
-    trim_box = (bleed_pt, bleed_pt, page_w_pt - bleed_pt, page_h_pt - bleed_pt)
-    bleed_box = (0, 0, page_w_pt, page_h_pt)
+    trim_box = (offset_pt + bleed_pt, offset_pt + bleed_pt,
+                offset_pt + page_w_pt - bleed_pt, offset_pt + page_h_pt - bleed_pt)
+    bleed_box = (offset_pt, offset_pt,
+                 offset_pt + page_w_pt, offset_pt + page_h_pt)
     c.setTrimBox(trim_box)
     c.setBleedBox(bleed_box)
-    c.setCropBox(trim_box)
+    # CropBox must encompass bleed + crop marks so viewers don't clip them.
+    c.setCropBox(bleed_box)
 
 
 # ---------------------------------------------------------------------------
@@ -345,8 +354,8 @@ def build_counter(font_bold: str, font_reg: str) -> Path:
     c.setFont(font_bold, 6)
 
     # White background (out to the bleed)
-    page_w, page_h = begin_page(c, out_trim_w, out_trim_h, out_bleed,
-                                fill=WHITE)
+    page_w, page_h, crop_margin = begin_page(c, out_trim_w, out_trim_h, out_bleed,
+                                             fill=WHITE)
 
     # Place the image so it fills the trim height (1050 mm) centred on the
     # counter, at the 300 dpi minimum specified by the printer.
@@ -398,7 +407,8 @@ def build_counter(font_bold: str, font_reg: str) -> Path:
                 preserveAspectRatio=True)
 
     draw_crop_marks(c, out_trim_w, out_trim_h, out_bleed)
-    set_pdf_boxes(c, out_trim_w, out_trim_h, out_bleed)
+    c.restoreState()
+    set_pdf_boxes(c, out_trim_w, out_trim_h, out_bleed, crop_margin)
     c.showPage()
     c.save()
 
@@ -431,8 +441,8 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
     c.setFont(font_bold, 6)
 
     # Page background: teal (#E4EBEC) - the site's light-mode body color
-    page_w, page_h = begin_page(c, out_trim_w, out_trim_h, out_bleed,
-                                fill=C_PAGE_BG)
+    page_w, page_h, crop_margin = begin_page(c, out_trim_w, out_trim_h, out_bleed,
+                                             fill=C_PAGE_BG)
 
     cx = out_bleed + out_trim_w / 2
     # Live design area inside trim box
@@ -688,8 +698,8 @@ def build_backwall(font_xbold: str, font_bold: str, font_reg: str,
 
     # Crop marks
     draw_crop_marks(c, out_trim_w, out_trim_h, out_bleed)
-
-    set_pdf_boxes(c, out_trim_w, out_trim_h, out_bleed)
+    c.restoreState()
+    set_pdf_boxes(c, out_trim_w, out_trim_h, out_bleed, crop_margin)
     c.showPage()
     c.save()
     return out_path
